@@ -30,8 +30,8 @@ class App(TkinterDnD.Tk):
                   background=[('selected', '#555555')],
                   foreground=[('selected', 'white')])
         style.configure("Treeview.Heading",
-                        background="#403C3B",
-                        foreground="white",
+                        background="#000000",
+                        foreground="#FFC000",
                         font=('Arial', 14, 'bold'))
 
         columns = ("File", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
@@ -46,11 +46,11 @@ class App(TkinterDnD.Tk):
         self.tree.heading("FileSystemDate", text="Dateisystem-Datum")
 
         # Tags für Zeilenfarben und Schriftfarben
-        self.tree.tag_configure('oddrow', background='#292524')
-        self.tree.tag_configure('evenrow', background='#403C3B')
-        self.tree.tag_configure('error', foreground='#FF8A80') # Helleres Rot
-        self.tree.tag_configure('creation_date', foreground='#B9F6CA') # Helleres Grün
-        self.tree.tag_configure('fs_date', foreground='#82B1FF') # Helleres Blau
+        self.tree.tag_configure('oddrow', background='#1D1A19') # 30% dunkler
+        self.tree.tag_configure('evenrow', background='#2D2A29') # 30% dunkler
+        self.tree.tag_configure('error', foreground='#FF0000')      # Rot
+        self.tree.tag_configure('creation_date', foreground='#00FF7F') # Grün
+        self.tree.tag_configure('fs_date', foreground='#00FFFF')      # Blau
         self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.drop_target_register(DND_FILES)
