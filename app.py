@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from tkinterdnd2 import DND_FILES, TkinterDND
+from tkinterdnd2 import DND_FILES, TkinterDnD
 import os
 import platform
 from datetime import datetime
@@ -8,7 +8,7 @@ from PyPDF2 import PdfReader
 
 from PyPDF2.errors import PdfReadError
 
-class App(TkinterDND.Tk):
+class App(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
         self.title("PDF-Metadaten-Extraktor")
