@@ -82,11 +82,17 @@ class App(TkinterDnD.Tk):
                     creation_date = self.format_pdf_date(info.get('/CreationDate'))
                     mod_date = self.format_pdf_date(info.get('/ModDate'))
 
-                xmp = reader.xmp_metadata
-                if xmp:
-                    xmp_create_date = str(xmp.get('xmp:CreateDate', ''))
-                    xmp_modify_date = str(xmp.get('xmp:ModifyDate', ''))
-                    xmp_metadata_date = str(xmp.get('xmp:MetadataDate', ''))
+                # XMP-Verarbeitung isolieren, um Fehler abzufangen
+                try:
+                    xmp = reader.xmp_metadata
+                    if xmp:
+                        xmp_create_date = str(xmp.get('xmp:CreateDate', ''))
+                        xmp_modify_date = str(xmp.get('xmp:ModifyDate', ''))
+                        xmp_metadata_date = str(xmp.get('xmp:MetadataDate', ''))
+                except Exception:
+                    xmp_create_date = "XMP-Daten fehlerhaft"
+                    xmp_modify_date = ""
+                    xmp_metadata_date = ""
 
                 if creation_date:
                     tag = 'creation_date'
