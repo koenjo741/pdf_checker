@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
+import tkinter.font as tkFont
 import os
 import platform
 from datetime import datetime
@@ -13,22 +14,25 @@ class App(TkinterDnD.Tk):
         super().__init__()
         self.title("PDF-Metadaten-Extraktor")
         self.geometry("1200x600")
-        self.configure(bg="#2E2E2E")
+        self.configure(bg="#0C0A09")
 
         # Style für Dark Mode
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("Toplevel", background="#2E2E2E")
+        style.configure("Toplevel", background="#0C0A09")
         style.configure("Treeview",
-                        background="#3C3C3C",
+                        background="#292524",
                         foreground="white",
-                        fieldbackground="#3C3C3C",
-                        rowheight=25)
-        style.map('Treeview', background=[('selected', '#555555')])
+                        fieldbackground="#292524",
+                        font=('Arial', 13),
+                        rowheight=35)
+        style.map('Treeview',
+                  background=[('selected', '#555555')],
+                  foreground=[('selected', 'white')])
         style.configure("Treeview.Heading",
-                        background="#555555",
+                        background="#403C3B",
                         foreground="white",
-                        font=('Arial', 10, 'bold'))
+                        font=('Arial', 14, 'bold'))
 
         columns = ("File", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
@@ -41,27 +45,51 @@ class App(TkinterDnD.Tk):
         self.tree.heading("XMPMetadataDate", text="xmp:MetadataDate")
         self.tree.heading("FileSystemDate", text="Dateisystem-Datum")
 
-        self.tree.column("File", width=250)
-        self.tree.column("CreationDate", width=150)
-        self.tree.column("ModDate", width=150)
-        self.tree.column("XMPCreateDate", width=150)
-        self.tree.column("XMPModifyDate", width=150)
-        self.tree.column("XMPMetadataDate", width=150)
-        self.tree.column("FileSystemDate", width=150)
-
-        self.tree.tag_configure('error', foreground='#FF6B6B') # Helleres Rot
-        self.tree.tag_configure('creation_date', foreground='#81C784') # Grün
-        self.tree.tag_configure('fs_date', foreground='#64B5F6') # Hellblau
+        # Tags für Zeilenfarben und Schriftfarben
+        self.tree.tag_configure('oddrow', background='#292524')
+        self.tree.tag_configure('evenrow', background='#403C3B')
+        self.tree.tag_configure('error', foreground='#FF8A80') # Helleres Rot
+        self.tree.tag_configure('creation_date', foreground='#B9F6CA') # Helleres Grün
+        self.tree.tag_configure('fs_date', foreground='#82B1FF') # Helleres Blau
         self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.on_drop)
+        self.row_count = 0
 
     def on_drop(self, event):
         files = self.tk.splitlist(event.data)
         for file_path in files:
-            data_row, tag = self.process_file(file_path)
-            self.tree.insert("", "end", values=data_row, tags=(tag,))
+            data_row, color_tag = self.process_file(file_path)
+
+            # Tag für abwechselnde Zeilenfarbe hinzufügen
+            row_style_tag = 'evenrow' if self.row_count % 2 == 0 else 'oddrow'
+
+            self.tree.insert("", "end", values=data_row, tags=(color_tag, row_style_tag))
+            self.row_count += 1
+
+        self.adjust_column_widths()
+
+    def adjust_column_widths(self):
+        """Passt die Spaltenbreiten basierend auf dem Inhalt an."""
+        font = tkFont.Font(family="Arial", size=13)  # Schriftart aus dem Style
+
+        for col in self.tree['columns']:
+            # Beginne mit der Breite des Spaltentitels
+            max_width = font.measure(self.tree.heading(col, 'text'))
+
+            # Überprüfe die Breite jeder Zelle in der Spalte
+            for item in self.tree.get_children():
+                try:
+                    cell_value = self.tree.item(item, 'values')[self.tree['columns'].index(col)]
+                    cell_width = font.measure(str(cell_value))
+                    if cell_width > max_width:
+                        max_width = cell_width
+                except (IndexError, TypeError):
+                    pass
+
+            # Setze die Spaltenbreite mit etwas Puffer
+            self.tree.column(col, width=max_width + 30)
 
     def process_file(self, file_path):
         file_name = os.path.basename(file_path)
