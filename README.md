@@ -29,8 +29,8 @@ Um eine eigenständige `.exe`-Datei zu erstellen, die ohne installierte Python-U
     ```
 2.  Führen Sie den folgenden Befehl im Terminal aus, um die Anwendung zu bündeln:
     ```bash
-    pyinstaller --onefile --windowed --add-data "C:/Users/jules/AppData/Local/Programs/Python/Python311/Lib/site-packages/tkinterdnd2;tkinterdnd2" app.py
+    pyinstaller --onefile --windowed --add-data "C:\Users\josef\AppData\Local\Programs\Python\Python313\Lib\site-packages\tkinterdnd2;tkinterdnd2" app.py
     ```
-    *Hinweis: Passen Sie den Pfad zu `tkinterdnd2` an Ihre Systemkonfiguration an.*
+    *Hinweis: Der obige Pfad zu `tkinterdnd2` ist spezifisch für Ihr System. Wenn Sie Python aktualisieren oder an einem anderen Ort installieren, muss er möglicherweise angepasst werden.*
 
 3.  Die fertige `.exe`-Datei befindet sich anschließend im `dist`-Verzeichnis.
