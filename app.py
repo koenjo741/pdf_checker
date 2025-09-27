@@ -13,6 +13,22 @@ class App(TkinterDND.Tk):
         super().__init__()
         self.title("PDF-Metadaten-Extraktor")
         self.geometry("1200x600")
+        self.configure(bg="#2E2E2E")
+
+        # Style für Dark Mode
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("Toplevel", background="#2E2E2E")
+        style.configure("Treeview",
+                        background="#3C3C3C",
+                        foreground="white",
+                        fieldbackground="#3C3C3C",
+                        rowheight=25)
+        style.map('Treeview', background=[('selected', '#555555')])
+        style.configure("Treeview.Heading",
+                        background="#555555",
+                        foreground="white",
+                        font=('Arial', 10, 'bold'))
 
         columns = ("File", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
@@ -33,8 +49,10 @@ class App(TkinterDND.Tk):
         self.tree.column("XMPMetadataDate", width=150)
         self.tree.column("FileSystemDate", width=150)
 
-        self.tree.tag_configure('error', foreground='red')
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.tree.tag_configure('error', foreground='#FF6B6B') # Helleres Rot
+        self.tree.tag_configure('creation_date', foreground='#81C784') # Grün
+        self.tree.tag_configure('fs_date', foreground='#64B5F6') # Hellblau
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.on_drop)
@@ -42,25 +60,24 @@ class App(TkinterDND.Tk):
     def on_drop(self, event):
         files = self.tk.splitlist(event.data)
         for file_path in files:
-            data_row, is_error = self.process_file(file_path)
-            tags = ('error',) if is_error else ()
-            self.tree.insert("", "end", values=data_row, tags=tags)
+            data_row, tag = self.process_file(file_path)
+            self.tree.insert("", "end", values=data_row, tags=(tag,))
 
     def process_file(self, file_path):
         file_name = os.path.basename(file_path)
-
+        tag = ''
         creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date = "", "", "", "", "", ""
-        is_error = False
 
         if not file_path.lower().endswith('.pdf'):
-            is_error = True
+            tag = 'error'
             row = (file_name, "Keine PDF-Datei", "", "", "", "", "")
-            return row, is_error
+            return row, tag
 
         try:
             with open(file_path, 'rb') as f:
                 reader = PdfReader(f)
                 info = reader.metadata
+
                 if info:
                     creation_date = self.format_pdf_date(info.get('/CreationDate'))
                     mod_date = self.format_pdf_date(info.get('/ModDate'))
@@ -71,17 +88,22 @@ class App(TkinterDND.Tk):
                     xmp_modify_date = str(xmp.get('xmp:ModifyDate', ''))
                     xmp_metadata_date = str(xmp.get('xmp:MetadataDate', ''))
 
-                if not creation_date:
+                if creation_date:
+                    tag = 'creation_date'
+                else:
                     fs_date = self.get_filesystem_creation_date(file_path)
+                    if fs_date and fs_date != "N/A":
+                        tag = 'fs_date'
+
         except PdfReadError:
             creation_date = "Fehler beim Lesen der PDF"
-            is_error = True
+            tag = 'error'
         except Exception as e:
             creation_date = f"Unerwarteter Fehler: {e}"
-            is_error = True
+            tag = 'error'
 
         row = (file_name, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date)
-        return row, is_error
+        return row, tag
 
     def format_pdf_date(self, pdf_date):
         if not pdf_date:
