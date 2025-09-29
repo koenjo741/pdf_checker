@@ -34,16 +34,21 @@ class App(TkinterDnD.Tk):
                         foreground="#FFC000",
                         font=('Arial', 14, 'bold'))
 
-        columns = ("File", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
+        columns = ("File", "Title", "Author", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
 
         self.tree.heading("File", text="Datei")
+        self.tree.heading("Title", text="/Title")
+        self.tree.heading("Author", text="/Author")
         self.tree.heading("CreationDate", text="/CreationDate")
         self.tree.heading("ModDate", text="/ModDate")
         self.tree.heading("XMPCreateDate", text="xmp:CreateDate")
         self.tree.heading("XMPModifyDate", text="xmp:ModifyDate")
         self.tree.heading("XMPMetadataDate", text="xmp:MetadataDate")
         self.tree.heading("FileSystemDate", text="Dateisystem-Datum")
+
+        for col in columns:
+            self.tree.heading(col, text=self.tree.heading(col, "text"), command=lambda _col=col: self.sort_column(_col, False))
 
         # Tags für Zeilenfarben und Schriftfarben
         self.tree.tag_configure('oddrow', background='#1D1A19') # 30% dunkler
@@ -56,6 +61,32 @@ class App(TkinterDnD.Tk):
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.on_drop)
         self.row_count = 0
+
+        # Kontextmenü für Rechtsklick
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Zeile löschen", command=self.delete_selected_row)
+        self.tree.bind("<Button-3>", self.show_context_menu)
+
+        self.set_initial_column_widths()
+
+    def set_initial_column_widths(self):
+        """Setzt die anfängliche Spaltenbreite basierend auf der Überschrift."""
+        font = tkFont.Font(family="Arial", size=14, weight="bold")  # Schriftart aus dem Style
+        for col in self.tree['columns']:
+            width = font.measure(self.tree.heading(col, 'text'))
+            self.tree.column(col, width=width + 20, anchor='w') # 'w' für linksbündig
+
+    def show_context_menu(self, event):
+        """Zeigt das Kontextmenü an der Klickposition an."""
+        # Nur anzeigen, wenn eine Zeile ausgewählt ist
+        if self.tree.focus():
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def delete_selected_row(self):
+        """Löscht die ausgewählte Zeile aus dem Treeview."""
+        selected_item = self.tree.focus()
+        if selected_item:
+            self.tree.delete(selected_item)
 
     def on_drop(self, event):
         files = self.tk.splitlist(event.data)
@@ -94,11 +125,11 @@ class App(TkinterDnD.Tk):
     def process_file(self, file_path):
         file_name = os.path.basename(file_path)
         tag = ''
-        creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date = "", "", "", "", "", ""
+        title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date = "", "", "", "", "", "", "", ""
 
         if not file_path.lower().endswith('.pdf'):
             tag = 'error'
-            row = (file_name, "Keine PDF-Datei", "", "", "", "", "")
+            row = (file_name, "Keine PDF-Datei", "", "", "", "", "", "", "")
             return row, tag
 
         try:
@@ -107,6 +138,8 @@ class App(TkinterDnD.Tk):
                 info = reader.metadata
 
                 if info:
+                    title = info.get('/Title', '')
+                    author = info.get('/Author', '')
                     creation_date = self.format_pdf_date(info.get('/CreationDate'))
                     mod_date = self.format_pdf_date(info.get('/ModDate'))
 
@@ -130,14 +163,35 @@ class App(TkinterDnD.Tk):
                         tag = 'fs_date'
 
         except PdfReadError:
-            creation_date = "Fehler beim Lesen der PDF"
+            title = "Fehler beim Lesen der PDF"
             tag = 'error'
         except Exception as e:
-            creation_date = f"Unerwarteter Fehler: {e}"
+            title = f"Unerwarteter Fehler: {e}"
             tag = 'error'
 
-        row = (file_name, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date)
+        row = (file_name, title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date)
         return row, tag
+
+    def sort_column(self, col, reverse):
+        """Sortiert die Spalte `col` in auf- oder absteigender Reihenfolge."""
+        # Daten aus dem Treeview extrahieren
+        l = [(self.tree.set(k, col), k) for k in self.tree.get_children('')]
+
+        # Sortieren der Daten
+        try:
+            # Versuche, numerisch oder datumsbasiert zu sortieren
+            l.sort(key=lambda t: datetime.strptime(t[0], "%Y-%m-%d %H:%M:%S"), reverse=reverse)
+        except ValueError:
+            # Fallback auf alphabetische Sortierung
+            l.sort(key=lambda t: t[0], reverse=reverse)
+
+        # Neuanordnen der Elemente im Treeview
+        for index, (val, k) in enumerate(l):
+            self.tree.move(k, '', index)
+
+        # Nächstes Mal in die umgekehrte Richtung sortieren
+        self.tree.heading(col, command=lambda: self.sort_column(col, not reverse))
+
 
     def format_pdf_date(self, pdf_date):
         if not pdf_date:
