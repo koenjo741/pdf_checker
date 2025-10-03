@@ -6,6 +6,8 @@ import os
 import platform
 from datetime import datetime
 from PyPDF2 import PdfReader
+from pyhanko.pdf_utils.reader import PdfFileReader
+from pyhanko.sign import validation
 
 from PyPDF2.errors import PdfReadError
 
@@ -34,7 +36,7 @@ class App(TkinterDnD.Tk):
                         foreground="#FFC000",
                         font=('Arial', 14, 'bold'))
 
-        columns = ("File", "Title", "Author", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate")
+        columns = ("File", "Title", "Author", "CreationDate", "ModDate", "XMPCreateDate", "XMPModifyDate", "XMPMetadataDate", "FileSystemDate", "SignatureDate")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
 
         self.tree.heading("File", text="Datei")
@@ -46,6 +48,8 @@ class App(TkinterDnD.Tk):
         self.tree.heading("XMPModifyDate", text="xmp:ModifyDate")
         self.tree.heading("XMPMetadataDate", text="xmp:MetadataDate")
         self.tree.heading("FileSystemDate", text="Dateisystem-Datum")
+        self.tree.heading("SignatureDate", text="Signaturdaten")
+
 
         for col in columns:
             self.tree.heading(col, text=self.tree.heading(col, "text"), command=lambda _col=col: self.sort_column(_col, False))
@@ -125,14 +129,15 @@ class App(TkinterDnD.Tk):
     def process_file(self, file_path):
         file_name = os.path.basename(file_path)
         tag = ''
-        title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date = "", "", "", "", "", "", "", ""
+        title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date, signature_date = "", "", "", "", "", "", "", "", ""
 
         if not file_path.lower().endswith('.pdf'):
             tag = 'error'
-            row = (file_name, "Keine PDF-Datei", "", "", "", "", "", "", "")
+            row = (file_name, "Keine PDF-Datei", "", "", "", "", "", "", "", "")
             return row, tag
 
         try:
+            # PyPDF2 für allgemeine Metadaten
             with open(file_path, 'rb') as f:
                 reader = PdfReader(f)
                 info = reader.metadata
@@ -143,7 +148,6 @@ class App(TkinterDnD.Tk):
                     creation_date = self.format_pdf_date(info.get('/CreationDate'))
                     mod_date = self.format_pdf_date(info.get('/ModDate'))
 
-                # XMP-Verarbeitung isolieren, um Fehler abzufangen
                 try:
                     xmp = reader.xmp_metadata
                     if xmp:
@@ -162,6 +166,10 @@ class App(TkinterDnD.Tk):
                     if fs_date and fs_date != "N/A":
                         tag = 'fs_date'
 
+            # pyHanko für Signaturdaten
+            signature_date = self.get_signature_dates(file_path)
+
+
         except PdfReadError:
             title = "Fehler beim Lesen der PDF"
             tag = 'error'
@@ -169,7 +177,7 @@ class App(TkinterDnD.Tk):
             title = f"Unerwarteter Fehler: {e}"
             tag = 'error'
 
-        row = (file_name, title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date)
+        row = (file_name, title, author, creation_date, mod_date, xmp_create_date, xmp_modify_date, xmp_metadata_date, fs_date, signature_date)
         return row, tag
 
     def sort_column(self, col, reverse):
@@ -216,6 +224,32 @@ class App(TkinterDnD.Tk):
             return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             return "N/A"
+
+    def get_signature_dates(self, file_path):
+        try:
+            with open(file_path, 'rb') as f:
+                r = PdfFileReader(f)
+                if not r.embedded_signatures:
+                    return ""
+
+                dates = []
+                for sig in r.embedded_signatures:
+                    try:
+                        status = validation.validate_pdf_signature(sig)
+                        if status.signer_reported_dt:
+                            # pyHanko gibt naive datetime-Objekte zurück, wir nehmen an, sie sind in lokaler Zeit
+                            local_dt = status.signer_reported_dt.astimezone()
+                            dates.append(local_dt.strftime("%Y-%m-%d %H:%M:%S"))
+                        else:
+                            dates.append("Kein Zeitstempel in Signatur")
+                    except Exception:
+                        # Manchmal schlägt die Validierung einer einzelnen Signatur fehl
+                        dates.append("Fehler bei Signatur-Validierung")
+
+                return "\n".join(dates) if dates else "Keine Zeitstempel"
+        except Exception:
+            # Wenn die Datei nicht von pyHanko gelesen werden kann (z.B. verschlüsselt)
+            return "Signatur-Fehler"
 
 if __name__ == "__main__":
     app = App()
