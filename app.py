@@ -235,21 +235,19 @@ class App(TkinterDnD.Tk):
                 dates = []
                 for sig in r.embedded_signatures:
                     try:
-                        status = validation.validate_pdf_signature(sig)
-                        if status.signer_reported_dt:
-                            # pyHanko gibt naive datetime-Objekte zurück, wir nehmen an, sie sind in lokaler Zeit
-                            local_dt = status.signer_reported_dt.astimezone()
-                            dates.append(local_dt.strftime("%Y-%m-%d %H:%M:%S"))
-                        else:
-                            dates.append("Kein Zeitstempel in Signatur")
+                        # Direkten Leseversuch des Zeitstempels, um Validierungsfehler zu umgehen
+                        signing_time = sig.get_signing_time()
+                        # Zeitstempel ist timezone-aware (UTC), in lokale Zeit umwandeln
+                        local_dt = signing_time.astimezone()
+                        dates.append(local_dt.strftime("%Y-%m-%d %H:%M:%S"))
                     except Exception:
-                        # Manchmal schlägt die Validierung einer einzelnen Signatur fehl
-                        dates.append("Fehler bei Signatur-Validierung")
+                        # Fängt Fehler ab, falls der Zeitstempel selbst fehlt oder defekt ist
+                        dates.append("Zeitstempel nicht lesbar")
 
-                return "\n".join(dates) if dates else "Keine Zeitstempel"
+                return "\n".join(dates) if dates else "Keine Zeitstempel gefunden"
         except Exception:
-            # Wenn die Datei nicht von pyHanko gelesen werden kann (z.B. verschlüsselt)
-            return "Signatur-Fehler"
+            # Fängt Fehler ab, falls die Datei von pyHanko nicht gelesen werden kann
+            return "Datei nicht lesbar/Signatur-Fehler"
 
 if __name__ == "__main__":
     app = App()
