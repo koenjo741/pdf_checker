@@ -5,17 +5,17 @@ import tkinter.font as tkFont
 import os
 import platform
 from datetime import datetime
+import re
 from PyPDF2 import PdfReader
 from pyhanko.pdf_utils.reader import PdfFileReader
-from pyhanko.sign import validation
-
 from PyPDF2.errors import PdfReadError
+
 
 class App(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
         self.title("PDF-Metadaten-Extraktor")
-        self.geometry("1200x600")
+        self.geometry("1350x600")
         self.configure(bg="#0C0A09")
 
         # Style für Dark Mode
@@ -88,7 +88,8 @@ class App(TkinterDnD.Tk):
             "xmp:ModifyDate": "",
             "xmp:MetadataDate": "",
             "Dateisystem-Datum": "",
-            "Signaturdaten": ""
+            "Signatur-Name": "",
+            "Signatur-Datum": ""
         }
 
         if not file_path.lower().endswith('.pdf'):
@@ -97,7 +98,6 @@ class App(TkinterDnD.Tk):
             return metadata, is_error
 
         try:
-            # PyPDF2 für allgemeine Metadaten
             with open(file_path, 'rb') as f:
                 reader = PdfReader(f)
                 info = reader.metadata
@@ -118,12 +118,14 @@ class App(TkinterDnD.Tk):
                     metadata["xmp:CreateDate"] = "XMP-Daten fehlerhaft"
 
                 if not metadata["/CreationDate"]:
-                     fs_date = self.get_filesystem_creation_date(file_path)
-                     if fs_date and fs_date != "N/A":
+                    fs_date = self.get_filesystem_creation_date(file_path)
+                    if fs_date and fs_date != "N/A":
                         metadata["Dateisystem-Datum"] = fs_date
 
-            # pyHanko für Signaturdaten
-            metadata["Signaturdaten"] = self.get_signature_dates(file_path)
+            # Signaturdaten (echte e-Signatur oder Fallback)
+            sig_name, sig_date = self.get_signature_info(file_path)
+            metadata["Signatur-Name"] = sig_name
+            metadata["Signatur-Datum"] = sig_date
 
         except PdfReadError:
             metadata["/Title"] = "Fehler beim Lesen der PDF"
@@ -146,7 +148,6 @@ class App(TkinterDnD.Tk):
 
     def get_filesystem_creation_date(self, file_path):
         try:
-            timestamp = 0
             if platform.system() == "Windows":
                 timestamp = os.path.getctime(file_path)
             else:
@@ -158,29 +159,105 @@ class App(TkinterDnD.Tk):
         except Exception:
             return "N/A"
 
-    def get_signature_dates(self, file_path):
+    def get_signature_info(self, file_path):
+        """Liest Signaturname + Datum (echte e-Signatur oder Fallback)."""
+        # 1) Versuch mit pyHanko (echte Signatur)
         try:
             with open(file_path, 'rb') as f:
-                r = PdfFileReader(f)
-                if not r.embedded_signatures:
-                    return ""
+                reader = PdfFileReader(f)
+                signatures = reader.embedded_signatures
 
-                dates = []
-                for sig in r.embedded_signatures:
-                    try:
-                        # Direkten Leseversuch des Zeitstempels, um Validierungsfehler zu umgehen
-                        signing_time = sig.get_signing_time()
-                        # Zeitstempel ist timezone-aware (UTC), in lokale Zeit umwandeln
-                        local_dt = signing_time.astimezone()
-                        dates.append(local_dt.strftime("%Y-%m-%d %H:%M:%S"))
-                    except Exception:
-                        # Fängt Fehler ab, falls der Zeitstempel selbst fehlt oder defekt ist
-                        dates.append("Zeitstempel nicht lesbar")
-
-                return "\n".join(dates) if dates else "Keine Zeitstempel gefunden"
+                if signatures:
+                    for sig in signatures:
+                        try:
+                            signing_time = sig.get_signing_time()
+                            signer = ""
+                            if hasattr(sig, "signer_cert") and sig.signer_cert:
+                                signer = sig.signer_cert.subject.human_friendly
+                            if signing_time:
+                                local_dt = signing_time.astimezone()
+                                return signer, local_dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            continue
         except Exception:
-            # Fängt Fehler ab, falls die Datei von pyHanko nicht gelesen werden kann
-            return "Datei nicht lesbar/Signatur-Fehler"
+            pass
+
+        # 2) Fallback: Suche Signaturfeld im AcroForm (echte digitale Signatur)
+        try:
+            reader = PdfReader(file_path)
+            if "/AcroForm" in reader.trailer["/Root"]:
+                acroform = reader.trailer["/Root"]["/AcroForm"]
+                if "/Fields" in acroform:
+                    for field in acroform["/Fields"]:
+                        obj = field.get_object()
+                        if obj.get("/FT") == "/Sig" and "/V" in obj:
+                            sig_dict = obj["/V"]
+                            name = sig_dict.get("/Name", "")
+                            date = sig_dict.get("/M", "")
+                            date = self.format_pdf_date(date)
+                            return name, date
+        except Exception:
+            pass
+
+        # 3) Fallback: Suche Signaturbox im PDF (sichtbare Unterschrift als Text)
+        try:
+            reader = PdfReader(file_path)
+            for page in reader.pages:
+                if "/Annots" in page:
+                    for annot in page["/Annots"]:
+                        obj = annot.get_object()
+                        if "/Contents" in obj:
+                            text = str(obj["/Contents"]).strip()
+
+                            # Falls Name und Datum in getrennten Zeilen stehen
+                            if "\n" in text:
+                                parts = text.splitlines()
+                                if len(parts) >= 2:
+                                    name = parts[0].strip()
+                                    date_str = parts[1].strip()
+
+                                    # ISO-Format
+                                    try:
+                                        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                                        return name, dt.strftime("%Y-%m-%d %H:%M:%S")
+                                    except Exception:
+                                        pass
+
+                                    # deutsches Format
+                                    try:
+                                        dt = datetime.strptime(date_str, "%d.%m.%Y %H:%M")
+                                        return name, dt.strftime("%Y-%m-%d %H:%M:%S")
+                                    except Exception:
+                                        try:
+                                            dt = datetime.strptime(date_str, "%d.%m.%Y")
+                                            return name, dt.strftime("%Y-%m-%d")
+                                        except Exception:
+                                            pass
+
+                                    # Slash-Format
+                                    try:
+                                        dt = datetime.strptime(date_str, "%d/%m/%Y %H:%M")
+                                        return name, dt.strftime("%Y-%m-%d %H:%M:%S")
+                                    except Exception:
+                                        try:
+                                            dt = datetime.strptime(date_str, "%d/%m/%Y")
+                                            return name, dt.strftime("%Y-%m-%d")
+                                        except Exception:
+                                            pass
+
+                                    return name, date_str  # ungeparst zurückgeben
+
+                            # Falls doch in einer Zeile: Regex-Muster
+                            m = re.search(r"(?P<name>.+?),\s*(?P<date>.+)", text)
+                            if m:
+                                return m.group("name").strip(), m.group("date").strip()
+
+                            return text, ""  # Fallback: nur roher Text
+
+            return "", ""
+        except Exception:
+            return "", ""
+
 
 if __name__ == "__main__":
     app = App()
