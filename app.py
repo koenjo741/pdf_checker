@@ -51,6 +51,8 @@ class App(TkinterDnD.Tk):
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.on_drop)
+        self.bind("<Configure>", self.update_label_wraplength)
+        self.value_labels = []
 
     def on_drop(self, event):
         # Nur die erste Datei aus der Liste nehmen
@@ -59,6 +61,7 @@ class App(TkinterDnD.Tk):
         # Vorherige Inhalte löschen
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
+        self.value_labels.clear()
 
         metadata, is_error = self.process_file(file_path)
 
@@ -71,9 +74,26 @@ class App(TkinterDnD.Tk):
 
                 # Value Label
                 val_style = "Error.TLabel" if is_error and key == "Datei" else "TLabel"
-                value_label = ttk.Label(self.scrollable_frame, text=value, wraplength=self.scrollable_frame.winfo_width() - 150, justify="left", style=val_style)
+                value_label = ttk.Label(self.scrollable_frame, text=value, justify="left", style=val_style)
                 value_label.grid(row=row_index, column=1, sticky="nw", padx=5, pady=2)
+                self.value_labels.append(value_label)
                 row_index += 1
+
+        self.update_label_wraplength()
+
+    def update_label_wraplength(self, event=None):
+        """Passt die Zeilenumbrüche der Value-Labels an die Fensterbreite an."""
+        # Wir geben dem Frame einen Moment Zeit, seine neue Größe zu registrieren
+        self.after(50, self._do_update_wraplength)
+
+    def _do_update_wraplength(self):
+        # Die Breite des scrollbaren Frames minus einem Puffer für das Key-Label und Padding
+        wraplength = self.scrollable_frame.winfo_width() - 150
+        if wraplength < 100: # Mindestbreite, um "Zerquetschen" zu verhindern
+            wraplength = 100
+
+        for label in self.value_labels:
+            label.configure(wraplength=wraplength)
 
     def process_file(self, file_path):
         file_name = os.path.basename(file_path)
